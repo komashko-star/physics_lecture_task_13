@@ -3,7 +3,6 @@ var MAX_X_DOMAIN = 10;
 var k = 9 * Math.pow(10, 9);
 
 var arrowDensity = 30;
-var arrowLength = 30;
 
 var color_gradient_start = 0;
 var color_gradient_finish = 40;
@@ -81,7 +80,7 @@ class Dipole {
 
     let r_n = [r[0] / hypot, r[1] / hypot];
 
-    let t = 3 * scalar_product(r_n, this.moment_vector);
+    let t = 2 * scalar_product(r_n, this.moment_vector);
 
     let t1 = [t * r_n[0], t * r_n[1]];
     let t2 = [t1[0] - this.moment_vector[0], t1[1] - this.moment_vector[1]]
@@ -328,8 +327,8 @@ function calculateFieldPotential(x, y) {
   return potential;
 }
 
-function drawVector(ctx, x, y, E_vector) {
-  let arrowSize = 10;
+function drawVector(ctx, x, y, E_vector, arrowLength=30, lineWidth=2, color=null) {
+  const arrowSize = 10;
   let E_vector_length = Math.hypot(E_vector[0], E_vector[1]);
 
   let [fromX, fromY] = modelToCanvasCoords(x, y);
@@ -343,7 +342,9 @@ function drawVector(ctx, x, y, E_vector) {
 
   const angle = Math.atan2(toY - fromY, toX - fromX);
 
-  let color = getRainbowColor(E_vector_length);
+  if (color === null){
+    color = getRainbowColor(E_vector_length);
+  }
 
   ctx.fillStyle = color;
   ctx.strokeStyle = color;
@@ -351,7 +352,7 @@ function drawVector(ctx, x, y, E_vector) {
   ctx.beginPath();
   ctx.moveTo(fromX, fromY);
   ctx.lineTo(toX, toY);
-  ctx.lineWidth = 2;
+  ctx.lineWidth = lineWidth;
   ctx.stroke();
 
   ctx.beginPath();
@@ -401,21 +402,25 @@ function redraw() {
 
     let radius = 10;
 
+    let F = calculateForceForCharge(i);
+
+    drawVector(chartContext, charges[i].x, charges[i].y, F, 60, 5, 'Indigo');
+
     if (charges[i].type == 'charge') {
       chartContext.fillStyle = charges[i].charge > 0 ? 'red' : charges[i].charge < 0 ? 'blue' : 'gray';
       chartContext.beginPath();
       chartContext.arc(i_0, j_0, radius, 0, 2 * Math.PI);
       chartContext.fill();
     } else {
-      let angle = Math.atan2(charges[i].moment_vector[1], charges[i].moment_vector[0]);
+      let angle = Math.atan2(-charges[i].moment_vector[1], charges[i].moment_vector[0]);
 
       chartContext.fillStyle = 'red';
       chartContext.beginPath();
-      chartContext.arc(i_0, j_0, radius, angle, angle + Math.PI, true);
+      chartContext.arc(i_0, j_0, radius, angle - Math.PI / 2, angle + Math.PI / 2);
       chartContext.fill();
       chartContext.fillStyle = 'blue';
       chartContext.beginPath();
-      chartContext.arc(i_0, j_0, radius, angle + Math.PI, angle + 2 * Math.PI, true);
+      chartContext.arc(i_0, j_0, radius, angle - Math.PI / 2, angle + Math.PI / 2, true);
       chartContext.fill();
     }
   }
@@ -602,25 +607,37 @@ function fieldGradient(func, r, delta = 1e-5) {
   return grad;
 }
 
+function calculateForceForCharge(i) {
+  if (charges[i].type == 'charge'){
+    let E = calculateFieldStrength(charges[i].x, charges[i].y);
+
+    return [charges[i].charge * E[0], charges[i].charge * E[1]];
+  } else {      
+    let gradE = fieldGradient(calculateFieldStrength, [charges[i].x, charges[i].y]);
+
+    const F = [0, 0];
+
+    for (let k = 0; k < 2; k++) {
+      for (let j = 0; j < 2; j++) {
+        F[k] += gradE[k][j] * charges[i].moment_vector[j];
+      }
+    }
+
+    return F;
+  }
+}
+
 function updateChargesForces() {
   for (let i = 0; i < charges.length; i++) {
     if (charges[i].type == 'charge'){
-      let E = calculateFieldStrength(charges[i].x, charges[i].y);
+      let F = calculateForceForCharge(i);
 
-      document.getElementById('F_x_' + (i + 1)).innerHTML = to_scientific_notation(charges[i].charge * E[0]);
-      document.getElementById('F_y_' + (i + 1)).innerHTML = to_scientific_notation(charges[i].charge * E[1]);
+      document.getElementById('F_x_' + (i + 1)).innerHTML = to_scientific_notation(F[0]);
+      document.getElementById('F_y_' + (i + 1)).innerHTML = to_scientific_notation(F[1]);
     } else {
       let E = calculateFieldStrength(charges[i].x, charges[i].y);
       
-      let gradE = fieldGradient(calculateFieldStrength, [charges[i].x, charges[i].y]);
-
-      const F = [0, 0];
-
-      for (let k = 0; k < 2; k++) {
-          for (let j = 0; j < 2; j++) {
-              F[k] += gradE[k][j] * charges[i].moment_vector[j];
-          }
-      }
+      let F = calculateForceForCharge(i);
 
       document.getElementById('F_x_' + (i + 1)).innerHTML = to_scientific_notation(F[0]);
       document.getElementById('F_y_' + (i + 1)).innerHTML = to_scientific_notation(F[1]);
@@ -630,7 +647,6 @@ function updateChargesForces() {
       document.getElementById('M_' + (i + 1)).innerHTML = to_scientific_notation(M);
     }
   }
-
 }
 
 function updateChargesForm() {
