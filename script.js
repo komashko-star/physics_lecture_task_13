@@ -17,16 +17,63 @@ const defaultChargeValues = [0, 0, 1, -9];
 
 class Charge {
   constructor(x, y, charge) {
+    this.type = "charge";
     this.x = x;
     this.y = y;
     this.charge = charge;
   }
+
+  calculatePotential(x0, y0) {
+    let hypot = Math.hypot(this.x - x0, this.y - y0);
+
+    return k * this.charge / hypot;
+  }
+
+  calculateStrength(x0, y0) {
+    let r = [x0 - this.x, y0 - this.y];
+    let r_length = Math.hypot(r[0], r[1]);
+
+    let E_q = k * this.charge / Math.pow(r_length, 3);
+
+    return [E_q * r[0], E_q * r[1]];
+  }
 }
+
+var scalar_product = (a, b) => { return a[0] * b[0] + a[1] * b[1]; };
+
 class Dipole {
   constructor(x, y, moment) {
+    this.type = "dipole";
     this.x = x;
     this.y = y;
-    this.moment = moment;
+    this.moment = Math.abs(moment[0], moment[1]);
+    this.moment_vector = moment;
+  }
+
+  calculatePotential(x0, y0) {
+    let r = [x0 - this.x, y0 - this.y];
+    let hypot = Math.hypot(r[0], r[1]);
+
+    let r_n = [r[0] / hypot, r[1] / hypot];
+
+    return k / hypot / hypot * scalar_product(this.moment_vector, r_n);
+  }
+
+  calculateStrength(x0, y0) {
+    let r = [x0 - this.x, y0 - this.y];
+    let hypot = Math.hypot(r[0], r[1]);
+
+    let r_n = [r[0] / hypot, r[1] / hypot];
+
+    let t = 3 * scalar_product(r_n, this.moment_vector);
+
+    let t1 = [t * r_n[0], t * r_n[1]];
+    let t2 = [t1[0] - this.moment_vector[0], t1[1] - this.moment_vector[1]]
+
+    let E_q = k / Math.pow(hypot, 3);
+
+    return [E_q * t2[0], E_q * t2[1]];
+
   }
 }
 
@@ -247,14 +294,9 @@ function calculateFieldStrength(x, y) {
   let vector = [0, 0];
 
   for (var i = 0; i < charges.length; i++) {
-    let [x_q, y_q, q] = charges[i];
+    let E_q = charges[i].calculateStrength(x, y);
 
-    let r = [x - x_q, y - y_q];
-    let r_length = Math.hypot(r[0], r[1]);
-
-    let E_q = k * q / Math.pow(r_length, 3);
-
-    vector = [vector[0] + E_q * r[0], vector[1] + E_q * r[1]];
+    vector = [vector[0] + E_q[0], vector[1] + E_q[1]];
   }
 
   return vector;
@@ -264,14 +306,7 @@ function calculateFieldPotential(x, y) {
   let potential = 0;
 
   for (var i = 0; i < charges.length; i++) {
-    let [x_q, y_q, q] = charges[i];
-
-    let r = [x - x_q, y - y_q];
-    let r_length = Math.hypot(r[0], r[1]);
-
-    let E_q = k * q / r_length;
-
-    potential += E_q;
+    potential += charges[i].calculatePotential(x, y);
   }
 
   return potential;
@@ -345,15 +380,28 @@ function redraw() {
     }
   }
 
-  chartContext.fillStyle = 'gray';
   for (var i = 0; i < charges.length; i++) {
-    let [i_0, j_0] = modelToCanvasCoords(charges[i][0], charges[i][1]);
+    let [i_0, j_0] = modelToCanvasCoords(charges[i].x, charges[i].y);
 
-    let radius = 5;
+    let radius = 10;
 
-    chartContext.beginPath();
-    chartContext.arc(i_0, j_0, radius, 0, 2 * Math.PI);
-    chartContext.fill();
+    if (charges[i].type == 'charge') {
+      chartContext.fillStyle = charges[i].charge > 0 ? 'red' : charges[i].charge < 0 ? 'blue' : 'gray';
+      chartContext.beginPath();
+      chartContext.arc(i_0, j_0, radius, 0, 2 * Math.PI);
+      chartContext.fill();
+    } else {
+      let angle = Math.atan2(charges[i].moment_vector[1], charges[i].moment_vector[0]);
+
+      chartContext.fillStyle = 'red';
+      chartContext.beginPath();
+      chartContext.arc(i_0, j_0, radius, angle, angle + Math.PI, true);
+      chartContext.fill();
+      chartContext.fillStyle = 'blue';
+      chartContext.beginPath();
+      chartContext.arc(i_0, j_0, radius, angle + Math.PI, angle + 2 * Math.PI, true);
+      chartContext.fill();
+    }
   }
 }
 
@@ -414,10 +462,22 @@ function collectData() {
   for (let i = 1; i <= charges.length; i++) { 
     let x_0_ = parseFloat(document.getElementById('x_' + i).value);
     let y_0_ = parseFloat(document.getElementById('y_' + i).value);
-    let q_0_ = parseFloat(document.getElementById('q_' + i).value);
-    let q_0_exp = parseFloat(document.getElementById('q_' + i + '_exp').value);
+    let type_ = document.getElementById('x_' + i).classList.contains('dipole') ? 'dipole' : 'charge';
 
-    charges_.push([x_0_, y_0_, q_0_ * Math.pow(10, q_0_exp)]);
+    if (type_ == 'charge') {
+      let q_0_ = parseFloat(document.getElementById('q_' + i).value);
+      let q_0_exp = parseFloat(document.getElementById('q_' + i + '_exp').value);
+
+      charges_.push(new Charge(x_0_, y_0_, q_0_ * Math.pow(10, q_0_exp)));
+    } else {
+      let p_x = parseFloat(document.getElementById('p_x_' + i).value);
+      let p_x_exp = parseFloat(document.getElementById('p_x_' + i + '_exp').value);
+      let p_y = parseFloat(document.getElementById('p_y_' + i).value);
+      let p_y_exp = parseFloat(document.getElementById('p_y_' + i + '_exp').value);
+
+      charges_.push(new Dipole(x_0_, y_0_, [p_x * Math.pow(10, p_x_exp), p_y * Math.pow(10, p_y_exp)]));
+    }
+
   }
   
   let arrowDensity_ = parseInt(document.getElementById('arrowdensity').value);
@@ -509,13 +569,25 @@ function updateColorGradient(event) {
 
 function updateChargesForm() {
   let oneChargeForm = `
-            $1 заряд: <br/> 
+            Заряд №$1: <br/> 
             
             <label for="x_$1">x<sub>$1</sub></label> = <input type="number" step="0.001" value="$2" id="x_$1" class="exponent_input" required> м;
             <label for="y_$1">y<sub>$1</sub></label> = <input type="number" step="0.001" value="$3" id="y_$1" class="exponent_input" required> м <br/>
                 
             <label for="q_$1">q<sub>$1</sub></label> = <input type="number" step="0.001" value="$4" id="q_$1" class="exponent_input" required> x 
             10^<input type="number" step="1" value="$5" id="q_$1_exp" class="exponent_input" required> Кл <br/>
+            `
+  let oneDipoleForm = `
+            Диполь №$1: <br/> 
+            
+            <label for="x_$1">x<sub>$1</sub></label> = <input type="number" step="0.001" value="$2" id="x_$1" class="exponent_input dipole" required> м;
+            <label for="y_$1">y<sub>$1</sub></label> = <input type="number" step="0.001" value="$3" id="y_$1" class="exponent_input" required> м <br/>
+                
+            <label for="p_x_$1">p<sub>$1</sub></label> = (
+            <input type="number" step="0.001" value="$4" id="p_x_$1" class="exponent_input" required> x 
+            10^<input type="number" step="1" value="$5" id="p_x_$1_exp" class="exponent_input" required> Кл⋅м, <br/>
+            <input type="number" step="0.001" value="$6" id="p_y_$1" class="exponent_input" required> x 
+            10^<input type="number" step="1" value="$7" id="p_y_$1_exp" class="exponent_input" required> Кл⋅м)<br/>
             `
 
   let removeChargeButton = "<button id=\"removeCharge$1\" type=\"button\">Удалить заряд</button><br/>";
@@ -525,21 +597,44 @@ function updateChargesForm() {
   chargesForm.innerHTML = "";
 
   for (let i = 1; i <= charges.length; i++) {
-    let number = charges[i - 1][2];
+    let data = [i, charges[i - 1].x, charges[i - 1].y];
+    if (charges[i - 1].type == 'charge'){
+      let number = charges[i - 1].charge;
 
-    let exponent = digitnumber(number);
-    if (exponent != 0 && exponent != 1) {
-      number = number * Math.pow(10, -exponent);
+      let exponent = digitnumber(number);
+      if (exponent != 0 && exponent != 1) {
+        number = number * Math.pow(10, -exponent);
+      }
+    
+      data.push(round(number, 3));
+      data.push(exponent);
+    } else {
+      let number1 = charges[i - 1].moment_vector[0];
+
+      let exponent = digitnumber(number1);
+      if (exponent != 0 && exponent != 1) {
+        number1 = number1 * Math.pow(10, -exponent);
+      }
+    
+      data.push(round(number1, 3));
+      data.push(exponent);
+
+      number1 = charges[i - 1].moment_vector[1];
+
+      exponent = digitnumber(number1);
+      if (exponent != 0 && exponent != 1) {
+        number1 = number1 * Math.pow(10, -exponent);
+      }
+    
+      data.push(round(number1, 3));
+      data.push(exponent);
     }
-  
-    number = round(number, 3);
 
-    chargesForm.innerHTML += oneChargeForm
-      .replaceAll("$1", i)
-      .replaceAll("$2", charges[i - 1][0])
-      .replaceAll("$3", charges[i - 1][1])
-      .replaceAll("$4", number)
-      .replaceAll("$5", exponent) + '\n';
+    let t = charges[i - 1].type == 'charge' ? oneChargeForm : oneDipoleForm;
+    for (let i = 1; i <= data.length; i++) {
+      t = t.replaceAll('$' + i, data[i - 1]);
+    }
+    chargesForm.innerHTML += t + '\n';
   
     if (charges.length > 1) {
       chargesForm.innerHTML += removeChargeButton.replaceAll("$1", i);
@@ -554,7 +649,12 @@ function updateChargesForm() {
 }
 
 function addChargeForm() {
-  charges.push([defaultChargeValues[0], defaultChargeValues[1], defaultChargeValues[2] * Math.pow(10, defaultChargeValues[3])]);
+  charges.push(defaultChargeFactory());
+  updateChargesForm();
+}
+
+function addDipoleForm() {
+  charges.push(defaultDipoleFactory());
   updateChargesForm();
 }
 
@@ -577,12 +677,12 @@ window.onload = () => {
   updateColorGradient(1);
 
   document.getElementById('addCharge').addEventListener('click', addChargeForm);
+  document.getElementById('addDipole').addEventListener('click', addDipoleForm);
 
   let ch = 1 / (k / 9);
 
   charges = [
-    [-0.5, 0, ch],
-    [0.5, 0, -2 * ch],
+    new Dipole(0, 0, [ch, ch]),
   ]
   updateChargesForm();
   reloadForm();
