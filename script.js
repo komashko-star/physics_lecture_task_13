@@ -24,12 +24,20 @@ class Charge {
   }
 
   calculatePotential(x0, y0) {
+    if (x0 == this.x && y0 == this.y) {
+      return 0;
+    }
+
     let hypot = Math.hypot(this.x - x0, this.y - y0);
 
     return k * this.charge / hypot;
   }
 
   calculateStrength(x0, y0) {
+    if (x0 == this.x && y0 == this.y) {
+      return [0, 0];
+    }
+
     let r = [x0 - this.x, y0 - this.y];
     let r_length = Math.hypot(r[0], r[1]);
 
@@ -51,6 +59,10 @@ class Dipole {
   }
 
   calculatePotential(x0, y0) {
+    if (x0 == this.x && y0 == this.y) {
+      return 0;
+    }
+
     let r = [x0 - this.x, y0 - this.y];
     let hypot = Math.hypot(r[0], r[1]);
 
@@ -60,6 +72,10 @@ class Dipole {
   }
 
   calculateStrength(x0, y0) {
+    if (x0 == this.x && y0 == this.y) {
+      return [0, 0];
+    }
+
     let r = [x0 - this.x, y0 - this.y];
     let hypot = Math.hypot(r[0], r[1]);
 
@@ -525,6 +541,8 @@ function reloadForm() {
   document.getElementById('curtain').style.visibility = 'visible';
   reloadModel();
   document.getElementById('curtain').style.visibility = 'hidden';
+  
+  updateChargesForces();
 }
 
 
@@ -567,6 +585,54 @@ function updateColorGradient(event) {
   }
 }
 
+function fieldGradient(func, r, delta = 1e-5) {
+  const grad = [[0, 0], [0, 0]];
+
+  for (let i = 0; i < 2; i++) {
+    const dr = [0, 0];
+    dr[i] = delta;
+
+    const E_forward = func(r[0] + dr[0], r[1] + dr[1]);
+    const E_backward = func(r[0] - dr[0], r[1] - dr[1]);
+
+    for (let j = 0; j < 2; j++) {
+      grad[j][i] = (E_forward[j] - E_backward[j]) / (2 * delta);
+    }
+  }
+  return grad;
+}
+
+function updateChargesForces() {
+  for (let i = 0; i < charges.length; i++) {
+    if (charges[i].type == 'charge'){
+      let E = calculateFieldStrength(charges[i].x, charges[i].y);
+
+      document.getElementById('F_x_' + (i + 1)).innerHTML = to_scientific_notation(charges[i].charge * E[0]);
+      document.getElementById('F_y_' + (i + 1)).innerHTML = to_scientific_notation(charges[i].charge * E[1]);
+    } else {
+      let E = calculateFieldStrength(charges[i].x, charges[i].y);
+      
+      let gradE = fieldGradient(calculateFieldStrength, [charges[i].x, charges[i].y]);
+
+      const F = [0, 0];
+
+      for (let k = 0; k < 2; k++) {
+          for (let j = 0; j < 2; j++) {
+              F[k] += gradE[k][j] * charges[i].moment_vector[j];
+          }
+      }
+
+      document.getElementById('F_x_' + (i + 1)).innerHTML = to_scientific_notation(F[0]);
+      document.getElementById('F_y_' + (i + 1)).innerHTML = to_scientific_notation(F[1]);
+
+      let M = charges[i].moment_vector[0] * E[1] - charges[i].moment_vector[1] * E[0];
+
+      document.getElementById('M_' + (i + 1)).innerHTML = to_scientific_notation(M);
+    }
+  }
+
+}
+
 function updateChargesForm() {
   let oneChargeForm = `
             Заряд №$1: <br/> 
@@ -576,6 +642,10 @@ function updateChargesForm() {
                 
             <label for="q_$1">q<sub>$1</sub></label> = <input type="number" step="0.001" value="$4" id="q_$1" class="exponent_input" required> x 
             10^<input type="number" step="1" value="$5" id="q_$1_exp" class="exponent_input" required> Кл <br/>
+
+            Сила со стороны поля: <br/>
+
+            F<sub>$1</sub> = (<span id="F_x_$1"> $6 </span> Н, <span id="F_y_$1"> $7 </span> Н)<br/>
             `
   let oneDipoleForm = `
             Диполь №$1: <br/> 
@@ -588,6 +658,12 @@ function updateChargesForm() {
             10^<input type="number" step="1" value="$5" id="p_x_$1_exp" class="exponent_input" required> Кл⋅м, <br/>
             <input type="number" step="0.001" value="$6" id="p_y_$1" class="exponent_input" required> x 
             10^<input type="number" step="1" value="$7" id="p_y_$1_exp" class="exponent_input" required> Кл⋅м)<br/>
+
+            Сила со стороны поля: <br/>
+
+            F<sub>$1</sub> = (<span id="F_x_$1"> $8 </span> Н, <span id="F_y_$1"> $9 </span> Н)<br/>
+
+            Момент сил: M<sub>$1</sub> = <span id="M_$1"> $10 </span> Н⋅м<br/>
             `
 
   let removeChargeButton = "<button id=\"removeCharge$1\" type=\"button\">Удалить заряд</button><br/>";
@@ -646,6 +722,7 @@ function updateChargesForm() {
     }
   }
   
+  updateChargesForces();
 }
 
 function addChargeForm() {
